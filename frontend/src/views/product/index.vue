@@ -36,7 +36,18 @@
       </thead>
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)">
-          <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td v-for="column in columns" :key="column">
+            <template v-if="column === '认证有效期状态'">
+              <span :class="['cert-state', row[column] === '有效' ? 'cert-valid' : 'cert-empty']">
+                {{ row[column] ?? '—' }}
+              </span>
+            </template>
+            <template v-else-if="column === '有效认证'">
+              <span v-if="row[column]">{{ row[column].认证编号 }} / {{ row[column].有效期限 }}</span>
+              <span v-else class="muted">暂无有效认证</span>
+            </template>
+            <template v-else>{{ row[column] ?? '—' }}</template>
+          </td>
           <td class="row-actions">
             <button
               v-for="action in actions"
@@ -67,10 +78,10 @@ import { onMounted, ref } from 'vue'
 
 import { request } from '@/api/client'
 
-type Row = Record<string, string | number | null>
+type Row = Record<string, any>
 
 const ENDPOINT = '/api/product'
-const columns = ["产品编号", "产品名称", "产品类型", "数据来源", "计算逻辑", "输出格式", "负责人", "产品状态"]
+const columns = ["产品编号", "产品名称", "产品类型", "数据来源", "计算逻辑", "输出格式", "负责人", "产品状态", "认证有效期状态", "有效认证"]
 const actions = ["发布产品", "下线产品", "删除产品"]
 const statuses = ["草稿", "开发中", "已发布", "已下线"]
 const stats = [{"label": "数据产品总数", "value": 0}, {"label": "已发布产品", "value": 0}, {"label": "已下线产品", "value": 0}]
@@ -99,10 +110,12 @@ async function runAction(action: string, row: Row) {
   try {
     const response = await request(`${ENDPOINT}/${row.id}/actions`, {
       method: 'POST',
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ values: { action } }),
     })
-    if (!response.ok) {
-      throw new Error('数据产品定义动作未生效，请稍后重试')
+    const payload = await response.json()
+    if (!response.ok || payload.ok === false) {
+      // 发布准入等后端校验失败原因直接展示，例如「暂无有效认证，发布准入不通过」
+      throw new Error(payload.message || '数据产品定义动作未生效，请稍后重试')
     }
     await reload()
   } catch (error) {
@@ -128,3 +141,27 @@ async function reload() {
 
 onMounted(reload)
 </script>
+
+<style scoped>
+.cert-state {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.cert-valid {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.cert-empty {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.muted {
+  color: #94a3b8;
+}
+</style>
